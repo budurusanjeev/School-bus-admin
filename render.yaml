@@ -1,0 +1,16 @@
+# Render Blueprint — static admin panel (no Node build).
+# Dashboard: New + Blueprint → connect this repo.
+services:
+  - type: web
+    name: school-bus-admin
+    runtime: static
+    plan: free
+    buildCommand: cp Index.html index.html
+    staticPublishPath: .
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
