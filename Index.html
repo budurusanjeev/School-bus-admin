@@ -1,0 +1,917 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MAHATHI - Advanced Fleet Control & Live Panel</title>
+
+    <link rel="stylesheet" href="leaflet.css" />
+    <script src="leaflet.js"></script>
+
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family:
+          'Inter',
+          system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      body {
+        display: flex;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        background-color: #0f172a;
+        color: #f8fafc;
+      }
+
+      /* #app-root is a flex item of body, so it needs an explicit size —
+         otherwise it shrinks to fit its content (just the sidebar) instead
+         of filling the page, leaving zero width for the map. */
+      #app-root {
+        width: 100%;
+        height: 100%;
+      }
+
+      /* Layout Sidebar System Controls */
+      #sidebar {
+        width: 380px;
+        height: 100%;
+        background-color: #1e293b;
+        border-right: 1px solid #334155;
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+        z-index: 10;
+        box-shadow: 4px 0 15px rgba(0, 0, 0, 0.3);
+      }
+      .brand-header {
+        padding: 20px;
+        background-color: #0f172a;
+        border-bottom: 1px solid #334155;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .brand-header h1 {
+        font-size: 16px;
+        color: #38bdf8;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .live-badge {
+        background-color: #10b981;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: bold;
+        animation: pulse 2s infinite;
+      }
+
+      .panel-content {
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .form-card {
+        background-color: #0f172a;
+        border: 1px solid #334155;
+        padding: 16px;
+        border-radius: 8px;
+      }
+      .form-card h3 {
+        font-size: 14px;
+        color: #94a3b8;
+        margin-bottom: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .input-group {
+        margin-bottom: 10px;
+      }
+      .input-group label {
+        display: block;
+        font-size: 11px;
+        color: #64748b;
+        margin-bottom: 4px;
+        font-weight: 500;
+      }
+      .input-group input {
+        width: 100%;
+        padding: 8px 12px;
+        background-color: #1e293b;
+        border: 1px solid #334155;
+        color: white;
+        border-radius: 6px;
+        font-size: 13px;
+        transition: border-color 0.2s;
+      }
+      .input-group input:focus {
+        border-color: #38bdf8;
+        outline: none;
+      }
+      .input-group select {
+        width: 100%;
+        padding: 8px 12px;
+        background-color: #1e293b;
+        border: 1px solid #334155;
+        color: white;
+        border-radius: 6px;
+        font-size: 13px;
+      }
+      .input-group select:focus {
+        border-color: #38bdf8;
+        outline: none;
+      }
+      .refresh-link {
+        display: inline-block;
+        font-size: 11px;
+        color: #38bdf8;
+        cursor: pointer;
+        margin-bottom: 10px;
+        text-decoration: underline;
+      }
+
+      .btn {
+        width: 100%;
+        padding: 10px;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 13px;
+        cursor: pointer;
+        transition: opacity 0.2s;
+        color: white;
+      }
+      .btn:hover {
+        opacity: 0.9;
+      }
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      /* Map Layout Setup Constraints Fix */
+      #map-wrapper {
+        flex: 1;
+        height: 100%;
+        position: relative;
+        background-color: #1e293b;
+      }
+      #map {
+        width: 100%;
+        height: 100%;
+      }
+
+      /* Help Alert Bar */
+      .map-hint {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        background: rgba(15, 23, 42, 0.85);
+        backdrop-filter: blur(4px);
+        padding: 10px 16px;
+        border-radius: 8px;
+        border: 1px solid #334155;
+        font-size: 12px;
+        color: #38bdf8;
+        z-index: 1000;
+        pointer-events: none;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      }
+
+      /* Custom Styles for Live Moving Bus Labels */
+      .bus-moving-badge {
+        background: #1e3a8a;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-weight: bold;
+        font-size: 11px;
+        border: 2px solid #eab308;
+        white-space: nowrap;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      }
+
+      @keyframes pulse {
+        0% {
+          opacity: 0.6;
+        }
+        50% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0.6;
+        }
+      }
+
+      /* Auth gate overlay */
+      #auth-gate {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #0f172a;
+        z-index: 2000;
+      }
+      .auth-card {
+        width: 320px;
+        background-color: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 10px;
+        padding: 28px;
+        text-align: center;
+      }
+      .auth-card h2 {
+        font-size: 18px;
+        color: #38bdf8;
+        margin-bottom: 6px;
+      }
+      .auth-card p {
+        font-size: 12px;
+        color: #94a3b8;
+        margin-bottom: 16px;
+      }
+      .auth-card input {
+        width: 100%;
+        padding: 10px 12px;
+        background-color: #0f172a;
+        border: 1px solid #334155;
+        color: white;
+        border-radius: 6px;
+        font-size: 13px;
+        margin-bottom: 12px;
+      }
+      .auth-card input:focus {
+        border-color: #38bdf8;
+        outline: none;
+      }
+      #auth-error {
+        display: none;
+        color: #ef4444;
+        font-size: 12px;
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="auth-gate">
+      <div class="auth-card">
+        <h2>MAHATHI Fleet Admin</h2>
+        <p>
+          Enter the admin password to continue. The first login of the day can
+          take up to a minute while the server wakes up.
+        </p>
+        <input type="password" id="auth-password" placeholder="Password" autofocus />
+        <button class="btn" style="background: #38bdf8; color: #0f172a" onclick="checkAuth()">
+          Unlock
+        </button>
+        <p id="auth-error">Incorrect password.</p>
+      </div>
+    </div>
+
+    <div id="app-root" style="display: none">
+      <div id="sidebar">
+        <div class="brand-header">
+          <h1>🚌 MAHATHI Fleet Hub v2</h1>
+          <div class="live-badge" id="live-fleet-counter">Buses: 0</div>
+        </div>
+
+        <div class="panel-content">
+          <div class="form-card">
+            <h3>Step 1: Register Driver</h3>
+            <div class="input-group">
+              <label>Driver Name</label>
+              <input type="text" id="d_name" placeholder="John Doe" />
+            </div>
+            <div class="input-group">
+              <label>Phone Number</label>
+              <input type="text" id="d_phone" placeholder="+91 9876543210" />
+            </div>
+            <div class="input-group">
+              <label>License Number</label>
+              <input type="text" id="d_lic" placeholder="DL-XXXXXXX" />
+            </div>
+            <button
+              class="btn"
+              style="background: #8b5cf6"
+              onclick="registerDriver(this)"
+            >
+              Register Driver
+            </button>
+          </div>
+
+          <div class="form-card">
+            <h3>Step 2: Create Bus Asset</h3>
+            <div class="input-group">
+              <label>License Plate Number</label>
+              <input type="text" id="b_num" placeholder="TS-06-EA-1234" />
+            </div>
+            <div class="input-group">
+              <label>Model / Specifications</label>
+              <input type="text" id="b_model" placeholder="Tata Starbus 40S" />
+            </div>
+            <button
+              class="btn"
+              style="background: #eab308; color: #0f172a"
+              onclick="createBus(this)"
+            >
+              Generate Bus UUID
+            </button>
+          </div>
+
+          <div class="form-card">
+            <h3>Step 3: Open Route Container</h3>
+            <div class="input-group">
+              <label>Route Title Descriptor</label>
+              <input
+                type="text"
+                id="r_name"
+                placeholder="Route 10 - Campus Link"
+              />
+            </div>
+            <button
+              class="btn"
+              style="background: #06b6d4"
+              onclick="createRoute(this)"
+            >
+              Save Empty Route
+            </button>
+          </div>
+
+          <div class="form-card">
+            <h3>Step 4: Deploy Configuration</h3>
+            <span class="refresh-link" onclick="refreshAllOptions()">↻ Refresh bus/driver/route lists</span>
+            <div class="input-group">
+              <label>Target Bus</label>
+              <select id="assign_bus_uuid">
+                <option value="">-- Select a bus --</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label>Driver</label>
+              <select id="assign_driver_id">
+                <option value="">-- Select a driver --</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label>Route</label>
+              <select id="assign_route_id">
+                <option value="">-- Select a route --</option>
+              </select>
+            </div>
+            <button
+              class="btn"
+              style="background: #f97316"
+              onclick="deployAssignment(this)"
+            >
+              Link Fleet Assets
+            </button>
+          </div>
+
+          <div class="form-card" style="border-color: #22c55e">
+            <h3 style="color: #22c55e">
+              Step 5: Add Bus Stop (Map Click Active)
+            </h3>
+            <div class="input-group">
+              <label>Route</label>
+              <select id="stop_route_id">
+                <option value="">-- Select a route --</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label>Stop Name / Address Location</label>
+              <input
+                type="text"
+                id="stop_name"
+                placeholder="Click map to autofill address"
+              />
+            </div>
+            <div class="input-group">
+              <label>Stop Order Sequence</label>
+              <input
+                type="number"
+                id="stop_seq"
+                placeholder="1 = First Stop, 2 = Second..."
+              />
+            </div>
+            <div class="input-group">
+              <label>Latitude Coords</label>
+              <input
+                type="text"
+                id="stop_lat"
+                readonly
+                style="background-color: #0f172a; color: #94a3b8"
+              />
+            </div>
+            <div class="input-group">
+              <label>Longitude Coords</label>
+              <input
+                type="text"
+                id="stop_lng"
+                readonly
+                style="background-color: #0f172a; color: #94a3b8"
+              />
+            </div>
+            <button class="btn" style="background: #22c55e" onclick="addStop(this)">
+              Add Stop to Route
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="map-wrapper">
+        <div class="map-hint">
+          📍 Tip: Click on map to add bus stops, tracking updates every 5s
+          automatically!
+        </div>
+        <div id="map"></div>
+      </div>
+    </div>
+
+    <script>
+      const BASE_URL = 'https://school-bus-backend-2.onrender.com/api/v1';
+
+      // The admin password is verified by the BACKEND: every /admin/* request
+      // carries it in the x-admin-key header and the server compares it to
+      // its ADMIN_PASSWORD env var. Nothing secret lives in this file.
+
+      let map = null;
+      let clickMarker = null;
+      let activeLiveBusMarkers = {}; // bus_id -> Leaflet marker
+      let appStarted = false;
+
+      function adminKey() {
+        return sessionStorage.getItem('adminKey') || '';
+      }
+      function adminHeaders() {
+        return { 'x-admin-key': adminKey() };
+      }
+      function handleUnauthorized() {
+        // Key was changed/revoked on the server — force a fresh login.
+        sessionStorage.removeItem('adminKey');
+        window.location.reload();
+      }
+      async function verifyKey(candidate) {
+        const res = await fetch(`${BASE_URL}/admin/auth-check`, {
+          headers: { 'x-admin-key': candidate },
+        });
+        return res.ok;
+      }
+      function unlock() {
+        document.getElementById('auth-gate').style.display = 'none';
+        document.getElementById('app-root').style.display = 'flex';
+        startApp();
+      }
+
+      // Selection caches for Step 4/5 dropdowns, keyed by entity id.
+      // Populated from whatever this panel creates during the session
+      // (guaranteed to work) and opportunistically topped up from list
+      // endpoints where they exist, so the admin never has to copy-paste
+      // a UUID or ID by hand.
+      let cachedBuses = new Map(); // id -> label
+      let cachedDrivers = new Map();
+      let cachedRoutes = new Map();
+
+      async function checkAuth() {
+        const input = document.getElementById('auth-password').value;
+        const errorEl = document.getElementById('auth-error');
+        const button = document.querySelector('#auth-gate .btn');
+        errorEl.style.display = 'none';
+        button.disabled = true;
+        button.textContent = 'Checking…';
+        try {
+          if (await verifyKey(input)) {
+            sessionStorage.setItem('adminKey', input);
+            unlock();
+          } else {
+            errorEl.textContent = 'Incorrect password.';
+            errorEl.style.display = 'block';
+          }
+        } catch (err) {
+          errorEl.textContent = 'Could not reach the server. Check your internet and try again.';
+          errorEl.style.display = 'block';
+        } finally {
+          button.disabled = false;
+          button.textContent = 'Unlock';
+        }
+      }
+
+      document.getElementById('auth-password').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') checkAuth();
+      });
+
+      // Auto-unlock if this browser tab already logged in earlier.
+      (async () => {
+        const existing = adminKey();
+        if (!existing) return;
+        try {
+          if (await verifyKey(existing)) {
+            unlock();
+          } else {
+            sessionStorage.removeItem('adminKey');
+          }
+        } catch (err) {
+          // Server unreachable — leave the login gate up.
+        }
+      })();
+
+      function startApp() {
+        if (appStarted) return;
+        appStarted = true;
+
+        // Initialize Leaflet map around Mahbubnagar hub
+        map = L.map('map').setView([16.7384, 78.0019], 14);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors',
+        }).addTo(map);
+
+        // The map was created while #app-root was hidden (display: none),
+        // so it needs a size recalculation now that it's actually visible.
+        setTimeout(() => map.invalidateSize(), 100);
+
+        map.on('click', handleMapClick);
+
+        trackLiveFleetPipeline();
+        setInterval(trackLiveFleetPipeline, 5000);
+
+        refreshAllOptions();
+      }
+
+      function populateSelect(selectEl, cache, placeholder) {
+        const previousValue = selectEl.value;
+        selectEl.innerHTML = '';
+
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = '';
+        placeholderOption.textContent = cache.size === 0 ? `${placeholder} (none yet)` : placeholder;
+        selectEl.appendChild(placeholderOption);
+
+        for (const [id, label] of cache) {
+          const option = document.createElement('option');
+          option.value = id;
+          option.textContent = label;
+          selectEl.appendChild(option);
+        }
+
+        // Keep the current selection if it's still a valid option
+        if (previousValue && cache.has(previousValue)) {
+          selectEl.value = previousValue;
+        }
+      }
+
+      function renderBusOptions() {
+        populateSelect(document.getElementById('assign_bus_uuid'), cachedBuses, '-- Select a bus --');
+      }
+      function renderDriverOptions() {
+        populateSelect(document.getElementById('assign_driver_id'), cachedDrivers, '-- Select a driver --');
+      }
+      function renderRouteOptions() {
+        populateSelect(document.getElementById('assign_route_id'), cachedRoutes, '-- Select a route --');
+        populateSelect(document.getElementById('stop_route_id'), cachedRoutes, '-- Select a route --');
+      }
+
+      // Best-effort fetch of a "list all" endpoint. Some of these may not
+      // exist on the backend yet — that's fine, we silently fall back to
+      // whatever's been created during this session instead of breaking.
+      async function tryFetchList(url) {
+        try {
+          const res = await fetch(url, { headers: adminHeaders() });
+          if (!res.ok) return null;
+          const data = await res.json();
+          return Array.isArray(data) ? data : null;
+        } catch (err) {
+          return null;
+        }
+      }
+
+      async function refreshAllOptions() {
+        // GET /api/v1/buses is confirmed to exist and is already used by
+        // the driver/parent apps, so this one is safe to rely on.
+        const buses = await tryFetchList(`${BASE_URL}/buses`);
+        if (buses) {
+          for (const bus of buses) {
+            cachedBuses.set(bus.id, `${bus.bus_number || 'Unknown bus'} (${String(bus.id).slice(0, 8)})`);
+          }
+        }
+        renderBusOptions();
+
+        // These list endpoints aren't confirmed to exist on the backend —
+        // tryFetchList() just no-ops if they 404 or error.
+        const drivers = await tryFetchList(`${BASE_URL}/admin/drivers`);
+        if (drivers) {
+          for (const driver of drivers) {
+            cachedDrivers.set(driver.id, `${driver.driver_name || 'Unnamed'} (id: ${driver.id})`);
+          }
+        }
+        renderDriverOptions();
+
+        const routes = await tryFetchList(`${BASE_URL}/admin/routes`);
+        if (routes) {
+          for (const route of routes) {
+            cachedRoutes.set(route.id, `${route.route_name || 'Unnamed route'} (id: ${route.id})`);
+          }
+        }
+        renderRouteOptions();
+      }
+
+      function setLoading(button, loading, loadingLabel) {
+        if (loading) {
+          button.dataset.originalLabel = button.textContent;
+          button.textContent = loadingLabel;
+          button.disabled = true;
+        } else {
+          button.textContent = button.dataset.originalLabel || button.textContent;
+          button.disabled = false;
+        }
+      }
+
+      async function submitJson(url, method, payload) {
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json', ...adminHeaders() },
+          body: JSON.stringify(payload),
+        });
+        if (res.status === 401) {
+          handleUnauthorized();
+          throw new Error('Session expired — please log in again.');
+        }
+        let data = null;
+        try {
+          data = await res.json();
+        } catch (e) {
+          // no or invalid JSON body
+        }
+        if (!res.ok) {
+          const message =
+            (data && (data.error || data.message)) || `Request failed (HTTP ${res.status})`;
+          throw new Error(message);
+        }
+        return data;
+      }
+
+      // Interactive Map Click Logic (Step 5 - Bus Stops Registration)
+      async function handleMapClick(e) {
+        const lat = e.latlng.lat;
+        const lng = e.latlng.lng;
+
+        document.getElementById('stop_lat').value = lat.toFixed(6);
+        document.getElementById('stop_lng').value = lng.toFixed(6);
+
+        if (clickMarker) {
+          clickMarker.setLatLng(e.latlng);
+        } else {
+          clickMarker = L.marker(e.latlng).addTo(map);
+        }
+
+        document.getElementById('stop_name').value = 'Fetching address details...';
+        try {
+          const geoUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
+          const res = await fetch(geoUrl, {
+            headers: { 'User-Agent': 'SchoolBusAdminFleetPanel' },
+          });
+          const data = await res.json();
+
+          if (data && data.address) {
+            const addr = data.address;
+            const placeName =
+              data.name ||
+              addr.amenity ||
+              addr.road ||
+              addr.suburb ||
+              addr.neighbourhood ||
+              addr.village ||
+              addr.town ||
+              'Bus Stop Pin';
+            const areaContext = addr.suburb || addr.village || addr.town || '';
+            const finalLocationName =
+              placeName !== areaContext && areaContext
+                ? `${placeName}, ${areaContext}`
+                : placeName;
+
+            document.getElementById('stop_name').value = finalLocationName;
+            clickMarker.bindPopup(`<b>${finalLocationName}</b>`).openPopup();
+          } else {
+            document.getElementById('stop_name').value =
+              `Stop Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+          }
+        } catch (err) {
+          document.getElementById('stop_name').value =
+            `Stop Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+        }
+      }
+
+      // Queries the live fleet locations endpoint and reconciles markers on the map
+      async function trackLiveFleetPipeline() {
+        try {
+          const response = await fetch(`${BASE_URL}/admin/fleet/locations`, {
+            headers: adminHeaders(),
+          });
+          if (response.status === 401) {
+            handleUnauthorized();
+            return;
+          }
+          if (!response.ok) {
+            console.error('Fleet telemetry status error:', response.status);
+            return;
+          }
+
+          const fleetList = await response.json();
+          let activeCount = 0;
+          let currentFiredIds = {};
+
+          for (let busLog of fleetList) {
+            const busId = busLog.bus_id;
+            const lat = parseFloat(busLog.latitude);
+            const lng = parseFloat(busLog.longitude);
+            const name = busLog.bus_number || 'Live Bus';
+            const route = busLog.route_name || 'Active Route';
+
+            if (!lat || !lng) continue;
+
+            activeCount++;
+            currentFiredIds[busId] = true;
+
+            const busDivIcon = L.divIcon({
+              className: 'custom-bus-icon',
+              html: `<div class="bus-moving-badge">🚌 ${name}</div>`,
+              iconSize: [null, null],
+              iconAnchor: [30, 15],
+            });
+
+            if (activeLiveBusMarkers[busId]) {
+              activeLiveBusMarkers[busId].setLatLng([lat, lng]);
+            } else {
+              const movingMarker = L.marker([lat, lng], { icon: busDivIcon }).addTo(map);
+              movingMarker.bindPopup(
+                `<b>${route}</b><br>Bus Number: ${name}<br>Speed: ${busLog.speed || 0} km/h`,
+              );
+              activeLiveBusMarkers[busId] = movingMarker;
+            }
+          }
+
+          for (let oldId in activeLiveBusMarkers) {
+            if (!currentFiredIds[oldId]) {
+              map.removeLayer(activeLiveBusMarkers[oldId]);
+              delete activeLiveBusMarkers[oldId];
+            }
+          }
+
+          document.getElementById('live-fleet-counter').innerText = `Buses: ${activeCount}`;
+        } catch (err) {
+          console.error('Master telemetry tracker interval failure:', err);
+        }
+      }
+
+      async function registerDriver(button) {
+        const name = document.getElementById('d_name').value.trim();
+        const phone = document.getElementById('d_phone').value.trim();
+        const lic = document.getElementById('d_lic').value.trim();
+        if (!name || !phone || !lic) {
+          alert('Please fill in driver name, phone number, and license number.');
+          return;
+        }
+
+        setLoading(button, true, 'Registering...');
+        try {
+          const data = await submitJson(`${BASE_URL}/admin/drivers`, 'POST', {
+            driver_name: name,
+            phone_number: phone,
+            license_number: lic,
+          });
+          alert(`Driver Saved! Assigned System ID: ${data.id}`);
+          cachedDrivers.set(data.id, `${name} (id: ${data.id})`);
+          renderDriverOptions();
+          document.getElementById('d_name').value = '';
+          document.getElementById('d_phone').value = '';
+          document.getElementById('d_lic').value = '';
+        } catch (err) {
+          alert(`Failed to register driver: ${err.message}`);
+        } finally {
+          setLoading(button, false);
+        }
+      }
+
+      async function createBus(button) {
+        const num = document.getElementById('b_num').value.trim();
+        const model = document.getElementById('b_model').value.trim();
+        if (!num || !model) {
+          alert('Please fill in license plate number and model.');
+          return;
+        }
+
+        setLoading(button, true, 'Creating...');
+        try {
+          const data = await submitJson(`${BASE_URL}/admin/buses`, 'POST', {
+            bus_number: num,
+            model_info: model,
+          });
+          const busId = data.id || (data.bus && data.bus.id);
+          alert(`Bus Asset Spawned!\nGenerated UUID:\n${busId}`);
+          cachedBuses.set(busId, `${num} (${String(busId).slice(0, 8)})`);
+          renderBusOptions();
+          document.getElementById('b_num').value = '';
+          document.getElementById('b_model').value = '';
+        } catch (err) {
+          alert(`Failed to create bus: ${err.message}`);
+        } finally {
+          setLoading(button, false);
+        }
+      }
+
+      async function createRoute(button) {
+        const name = document.getElementById('r_name').value.trim();
+        if (!name) {
+          alert('Please fill in the route title.');
+          return;
+        }
+
+        setLoading(button, true, 'Saving...');
+        try {
+          const data = await submitJson(`${BASE_URL}/admin/routes`, 'POST', {
+            route_name: name,
+          });
+          alert(`Route Opened! Assigned System ID: ${data.id}`);
+          cachedRoutes.set(data.id, `${name} (id: ${data.id})`);
+          renderRouteOptions();
+          document.getElementById('r_name').value = '';
+        } catch (err) {
+          alert(`Failed to create route: ${err.message}`);
+        } finally {
+          setLoading(button, false);
+        }
+      }
+
+      async function deployAssignment(button) {
+        const uuid = document.getElementById('assign_bus_uuid').value.trim();
+        const driverIdRaw = document.getElementById('assign_driver_id').value;
+        const routeIdRaw = document.getElementById('assign_route_id').value;
+        if (!uuid || !driverIdRaw || !routeIdRaw) {
+          alert('Please fill in the bus UUID, driver ID, and route ID.');
+          return;
+        }
+
+        setLoading(button, true, 'Linking...');
+        try {
+          await submitJson(`${BASE_URL}/admin/buses/${uuid}/assign`, 'PUT', {
+            driver_id: parseInt(driverIdRaw, 10),
+            route_id: parseInt(routeIdRaw, 10),
+          });
+          alert('Assets Linked! Driver and Route bounds mapped to Bus telemetry profile successfully.');
+          document.getElementById('assign_bus_uuid').value = '';
+          document.getElementById('assign_driver_id').value = '';
+          document.getElementById('assign_route_id').value = '';
+        } catch (err) {
+          alert(`Failed to link assets: ${err.message}`);
+        } finally {
+          setLoading(button, false);
+        }
+      }
+
+      async function addStop(button) {
+        const rId = document.getElementById('stop_route_id').value;
+        const stopName = document.getElementById('stop_name').value.trim();
+        const seqRaw = document.getElementById('stop_seq').value;
+        const lat = document.getElementById('stop_lat').value;
+        const lng = document.getElementById('stop_lng').value;
+        if (!rId || !stopName || !seqRaw || !lat || !lng) {
+          alert('Please fill in the route ID, stop name, sequence, and click the map to set coordinates.');
+          return;
+        }
+
+        setLoading(button, true, 'Saving...');
+        try {
+          await submitJson(`${BASE_URL}/admin/routes/${rId}/stops`, 'POST', {
+            stop_name: stopName,
+            stop_sequence: parseInt(seqRaw, 10),
+            latitude: parseFloat(lat),
+            longitude: parseFloat(lng),
+          });
+          alert('Bus Stop Saved and Rendered!');
+          if (clickMarker) {
+            map.removeLayer(clickMarker);
+            clickMarker = null;
+          }
+          document.getElementById('stop_name').value = '';
+          document.getElementById('stop_seq').value = '';
+          document.getElementById('stop_lat').value = '';
+          document.getElementById('stop_lng').value = '';
+        } catch (err) {
+          alert(`Failed to add stop: ${err.message}`);
+        } finally {
+          setLoading(button, false);
+        }
+      }
+    </script>
+  </body>
+</html>
