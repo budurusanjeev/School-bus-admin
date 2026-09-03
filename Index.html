@@ -466,7 +466,11 @@
         const res = await fetch(`${BASE_URL}/admin/auth-check`, {
           headers: { 'x-admin-key': candidate },
         });
-        return res.ok;
+        if (res.status === 401) return false;
+        if (!res.ok) {
+          throw new Error(`Auth check failed (HTTP ${res.status})`);
+        }
+        return true;
       }
       function unlock() {
         document.getElementById('auth-gate').style.display = 'none';
@@ -587,6 +591,10 @@
       async function tryFetchList(url) {
         try {
           const res = await fetch(url, { headers: adminHeaders() });
+          if (res.status === 401) {
+            handleUnauthorized();
+            return null;
+          }
           if (!res.ok) return null;
           const data = await res.json();
           return Array.isArray(data) ? data : null;
@@ -596,8 +604,6 @@
       }
 
       async function refreshAllOptions() {
-        // GET /api/v1/buses is confirmed to exist and is already used by
-        // the driver/parent apps, so this one is safe to rely on.
         const buses = await tryFetchList(`${BASE_URL}/buses`);
         if (buses) {
           for (const bus of buses) {
@@ -606,8 +612,6 @@
         }
         renderBusOptions();
 
-        // These list endpoints aren't confirmed to exist on the backend —
-        // tryFetchList() just no-ops if they 404 or error.
         const drivers = await tryFetchList(`${BASE_URL}/admin/drivers`);
         if (drivers) {
           for (const driver of drivers) {
@@ -727,6 +731,10 @@
           }
 
           const fleetList = await response.json();
+          if (!Array.isArray(fleetList)) {
+            console.error('Fleet telemetry: expected an array, got', fleetList);
+            return;
+          }
           let activeCount = 0;
           let currentFiredIds = {};
 
@@ -737,7 +745,10 @@
             const name = busLog.bus_number || 'Live Bus';
             const route = busLog.route_name || 'Active Route';
 
-            if (!lat || !lng) continue;
+            // Backend COALESCE-fills hub coords for buses with no GPS row.
+            // A missing timestamp means the bus is not actually reporting.
+            if (!busLog.timestamp) continue;
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
 
             activeCount++;
             currentFiredIds[busId] = true;
@@ -789,6 +800,9 @@
             phone_number: phone,
             license_number: lic,
           });
+          if (!data || data.id == null) {
+            throw new Error('Server saved the driver but did not return an id.');
+          }
           alert(`Driver Saved! Assigned System ID: ${data.id}`);
           cachedDrivers.set(data.id, `${name} (id: ${data.id})`);
           renderDriverOptions();
@@ -816,7 +830,10 @@
             bus_number: num,
             model_info: model,
           });
-          const busId = data.id || (data.bus && data.bus.id);
+          const busId = data && (data.id || (data.bus && data.bus.id));
+          if (!busId) {
+            throw new Error('Server created the bus but did not return an id.');
+          }
           alert(`Bus Asset Spawned!\nGenerated UUID:\n${busId}`);
           cachedBuses.set(busId, `${num} (${String(busId).slice(0, 8)})`);
           renderBusOptions();
@@ -841,6 +858,9 @@
           const data = await submitJson(`${BASE_URL}/admin/routes`, 'POST', {
             route_name: name,
           });
+          if (!data || data.id == null) {
+            throw new Error('Server saved the route but did not return an id.');
+          }
           alert(`Route Opened! Assigned System ID: ${data.id}`);
           cachedRoutes.set(data.id, `${name} (id: ${data.id})`);
           renderRouteOptions();
@@ -857,7 +877,7 @@
         const driverIdRaw = document.getElementById('assign_driver_id').value;
         const routeIdRaw = document.getElementById('assign_route_id').value;
         if (!uuid || !driverIdRaw || !routeIdRaw) {
-          alert('Please fill in the bus UUID, driver ID, and route ID.');
+          alert('Please select a bus, a driver, and a route.');
           return;
         }
 
@@ -885,7 +905,11 @@
         const lat = document.getElementById('stop_lat').value;
         const lng = document.getElementById('stop_lng').value;
         if (!rId || !stopName || !seqRaw || !lat || !lng) {
-          alert('Please fill in the route ID, stop name, sequence, and click the map to set coordinates.');
+          alert('Please select a route, enter a stop name and sequence, and click the map to set coordinates.');
+          return;
+        }
+        if (stopName === 'Fetching address details...') {
+          alert('Wait for the map address to finish loading, or type a stop name yourself.');
           return;
         }
 
